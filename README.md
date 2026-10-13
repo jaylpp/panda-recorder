@@ -29,11 +29,13 @@
 
 ## 安装与使用
 
-当前提供源码构建，暂未提供经过 Apple 签名和公证的安装包。
+可在 [Releases](https://github.com/jaylpp/panda-recorder/releases) 下载 Apple Silicon 预览版 ZIP，解压后将「熊猫录屏.app」拖到「应用程序」。预览版使用临时签名，未经 Apple 公证，首次打开可能受到 macOS 安全检查限制。请确认来源；若系统提供「仍要打开」，可在「系统设置 → 隐私与安全性」中按提示操作，不建议关闭系统安全保护。
+
+安装包要求 Apple Silicon（M 系列）和 macOS 15 或更新版本；当前仅在开发者的 macOS 26.5.2 上实测，macOS 15 仍待验证。Intel Mac 暂无安装包。也可按下面步骤自行构建。
 
 ### 1. 构建应用
 
-需要 macOS、Xcode Command Line Tools，以及包含 macOS 15 API 的 SDK（Xcode 16 或更新版本）。构建脚本声明最低 macOS 14；**麦克风功能需要 macOS 15 或更新版本**。旧版系统和 Intel Mac 尚未完成专项验证。
+需要 macOS、Xcode Command Line Tools，以及包含 macOS 15 API 的 SDK（Xcode 16 或更新版本）。构建脚本面向 Apple Silicon，最低 macOS 15；**麦克风功能需要 macOS 15 或更新版本**。旧版系统和 Intel Mac 尚未完成专项验证。
 
 ```bash
 # 如果尚未安装命令行开发工具
