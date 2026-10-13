@@ -8,15 +8,19 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Co
 DEST="$PWD/build/release"
 mkdir -p "$DEST"
 STAGE=$(mktemp -d "$PWD/build/dmg-stage.XXXXXX")
-trap 'rm -rf "$STAGE"' EXIT
-ditto "$APP" "$STAGE/熊猫录屏.app"
-ln -s /Applications "$STAGE/应用程序"
-cat > "$STAGE/安装说明.txt" <<'TXT'
-将「熊猫录屏」拖入「应用程序」，然后从应用程序打开。
-首次使用点击「授权录屏」，在系统设置中允许录屏，再按系统提示重新打开。
-本预览版尚未经过 Apple 公证。使用说明：https://github.com/jaylpp/panda-recorder
-TXT
+MOUNT="$STAGE/mounted"
+cleanup() { hdiutil detach "$MOUNT" >/dev/null 2>&1 || true; rm -rf "$STAGE"; }
+trap cleanup EXIT
+mkdir -p "$STAGE/content"
+ditto "$APP" "$STAGE/content/熊猫录屏.app"
+ln -s /Applications "$STAGE/content/应用程序"
 DMG="$DEST/PandaRecorder-v${VERSION}-macOS-arm64.dmg"
-hdiutil create -volname "熊猫录屏" -srcfolder "$STAGE" -format UDZO -ov "$DMG"
+python3 -c 'import PIL, ds_store, mac_alias' || { echo "请先运行：python3 -m pip install Pillow ds-store mac-alias" >&2; exit 1; }
+hdiutil create -volname "熊猫录屏" -srcfolder "$STAGE/content" -format UDRW -ov "$STAGE/writable.dmg"
+mkdir -p "$MOUNT"
+hdiutil attach -nobrowse -mountpoint "$MOUNT" "$STAGE/writable.dmg"
+python3 scripts/dmg-layout.py "$MOUNT"
+hdiutil detach "$MOUNT"
+hdiutil convert "$STAGE/writable.dmg" -format UDZO -ov -o "$DMG"
 (cd "$DEST" && shasum -a 256 "$(basename "$DMG")" > SHA256SUMS.txt)
 printf '%s\n' "$DMG"
