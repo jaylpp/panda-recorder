@@ -25,7 +25,7 @@
 
 ## 下载安装
 
-前往 [Releases](https://github.com/jaylpp/panda-recorder/releases) 下载 ZIP，解压后将「熊猫录屏.app」拖到「应用程序」。
+前往 [Releases](https://github.com/jaylpp/panda-recorder/releases) 下载 DMG，打开后将「熊猫录屏」拖到「应用程序」，再从应用程序打开。
 
 - **系统要求**：Apple Silicon（M 系列），macOS 15 或更新版本；macOS 15 尚待实测，暂无 Intel 安装包。
 - **首次打开**：预览版未经 Apple 公证，可能被系统拦截。确认来源后，可按「系统设置 → 隐私与安全性」中的提示打开。

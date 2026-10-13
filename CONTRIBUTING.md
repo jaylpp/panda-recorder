@@ -14,6 +14,8 @@ bash build.sh
 open "build/熊猫录屏.app"
 ```
 
+生成 DMG 安装包运行 `bash package-dmg.sh`，产物位于 `build/release/`。
+
 主代码在 `Sources/main.swift`，图标在 `Assets/`。重新构建后可能需要刷新录屏授权，见 README。
 
 ## 提交改动
