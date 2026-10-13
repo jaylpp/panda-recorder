@@ -3,6 +3,7 @@
 Requires Pillow, ds-store and mac-alias.
 """
 import sys
+import subprocess
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from ds_store import DSStore
@@ -23,8 +24,14 @@ text('拖入「应用程序」即可安装', 350, 17, '#606675')
 # Arrow between the two Finder icons.
 draw.line([(328 * scale, 205 * scale), (392 * scale, 205 * scale)], fill='#9ca5b5', width=3 * scale)
 draw.line([(380 * scale, 193 * scale), (392 * scale, 205 * scale), (380 * scale, 217 * scale)], fill='#9ca5b5', width=3 * scale)
-path = background / 'installer.png'
-image.resize((720, 440), Image.Resampling.LANCZOS).save(path)
+normal = background / 'installer-1x.tiff'
+retina = background / 'installer-2x.tiff'
+path = background / 'installer.tiff'
+image.resize((720, 440), Image.Resampling.LANCZOS).save(normal, dpi=(72, 72))
+image.save(retina, dpi=(144, 144))
+subprocess.run(['/usr/bin/tiffutil', '-cathidpicheck', str(normal), str(retina), '-out', str(path)], check=True)
+normal.unlink()
+retina.unlink()
 with DSStore.open(str(root / '.DS_Store'), 'w+') as store:
     store['.']['bwsp'] = {
         'ShowStatusBar': False, 'ShowToolbar': False, 'ShowSidebar': False,
