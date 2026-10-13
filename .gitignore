@@ -1,0 +1,9 @@
+/build/
+*.log
+*.bak
+.DS_Store
+/Assets/*.iconset/
+*.mp4
+*.mov
+.env
+.env.*
