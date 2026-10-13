@@ -324,6 +324,20 @@ final class RegionView:NSView {
     override func keyDown(with event:NSEvent){if event.keyCode == 53 {complete?(nil)}}
 }
 
+// Align action icons at the leading edge and center all button titles.
+final class LeadingActionButtonCell:NSButtonCell {
+    override func drawTitle(_ title:NSAttributedString,withFrame frame:NSRect,in view:NSView)->NSRect {
+        var rect=frame
+        rect.origin.x=view.bounds.minX
+        rect.size.width=view.bounds.width
+        return super.drawTitle(title,withFrame:rect,in:view)
+    }
+    override func drawImage(_ image:NSImage,withFrame frame:NSRect,in view:NSView) {
+        let rect=NSRect(x:view.bounds.minX+14,y:frame.midY-6,width:12,height:12)
+        super.drawImage(image,withFrame:rect,in:view)
+    }
+}
+
 // Keep each icon and label together regardless of the button's hit-area width.
 final class RecordingBarButton: NSButton {
     override func draw(_ dirtyRect:NSRect) {
@@ -542,7 +556,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let section=label("录制来源",Typography.body,.semibold)
         mode=NSSegmentedControl(labels:["全屏","窗口","区域"],trackingMode:.selectOne,target:self,action:#selector(changeMode));mode.selectedSegment=0
         mode.segmentStyle = .rounded;mode.controlSize = .large;mode.font = .systemFont(ofSize:Typography.body)
-        regionButton=button("选择屏幕",#selector(selectRegion));regionButton.isHidden=false
+        regionButton=button("选择屏幕",#selector(selectRegion));regionButton.image=actionIcon("display");regionButton.isHidden=false
         popup.target=self;popup.action=#selector(sourceChanged)
         popup.controlSize = .large;popup.font = .systemFont(ofSize:Typography.body)
         popup.addItem(withTitle:"请选择录制来源")
@@ -554,8 +568,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popup.setContentHuggingPriority(.defaultLow,for:.horizontal)
         startButton=button("开始录制",#selector(start));startButton.keyEquivalent="\r"
         startButton.bezelColor = .systemBlue
-        startButton.image=NSImage(systemSymbolName:"record.circle",accessibilityDescription:nil)
-        stopButton=button("停止录制",#selector(stop));stopButton.isEnabled=false
+        startButton.image=actionIcon("circle.fill")
+        stopButton=button("停止录制",#selector(stop));stopButton.image=actionIcon("stop.fill");stopButton.isEnabled=false
         let rule=NSBox();rule.boxType = .separator
         microphoneToggle.toolTip="使用系统默认麦克风"
         let note=windowNote;note.font = .systemFont(ofSize:Typography.caption);note.textColor = .secondaryLabelColor;note.isHidden=true
@@ -624,7 +638,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for v in [mode,sourceRow,regionButton,soundGroup,rule,startButton,stopButton,note,motionRow,magnificationRow] as [NSView] {v.widthAnchor.constraint(equalTo:sidebar.widthAnchor).isActive=true}
         for v in [previewContainer,previews,bar,status] as [NSView] {v.widthAnchor.constraint(equalTo:main.widthAnchor).isActive=true}
         popup.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
-        for b in [startButton,folderButton] {b.imagePosition = .imageLeading}
+        for b in [startButton,stopButton,regionButton,folderButton] {b.imagePosition = .imageLeading}
         window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
         window.delegate=self;updateScreenHint();refresh()
         screenObserver=NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main){[weak self] _ in self?.screensChanged()}
@@ -635,9 +649,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
             folderButton.isEnabled=true;play(resultURL!)
         }
     }
-    func button(_ title:String,_ action:Selector)->NSButton {let b=NSButton(title:title,target:self,action:action);b.bezelStyle = .rounded;b.controlSize = .large;b.font=NSFont.systemFont(ofSize:Typography.body,weight:.medium);return b}
+    func button(_ title:String,_ action:Selector)->NSButton {let b=NSButton(title:title,target:self,action:action);if action == #selector(start) || action == #selector(stop) || action == #selector(selectRegion) {b.cell=LeadingActionButtonCell(textCell:title);b.setButtonType(.momentaryPushIn);b.target=self;b.action=action;b.alignment = .center};b.bezelStyle = .rounded;b.controlSize = .large;b.font=NSFont.systemFont(ofSize:Typography.body,weight:.medium);return b}
+    func actionIcon(_ name:String)->NSImage? {NSImage(systemSymbolName:name,accessibilityDescription:nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize:12,weight:.regular))}
     func hideRegionIndicator(){regionWindow?.orderOut(nil);regionWindow=nil}
-    func clearRegion(){hideRegionIndicator();region=nil;regionButton.title=mode.selectedSegment == 0 ? "选择屏幕" : "拖动选择区域"}
+    func clearRegion(){hideRegionIndicator();region=nil;regionButton.title=mode.selectedSegment == 0 ? "选择屏幕" : "拖动选择区域";regionButton.image=actionIcon(mode.selectedSegment == 0 ? "display" : "cursorarrow")}
     func showRegionIndicator(){
         guard let r=region,displays.indices.contains(popup.indexOfSelectedItem) else{return}
         let display=displays[popup.indexOfSelectedItem]
@@ -702,7 +717,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func refresh(){
         guard !busy,!choosing else{return}
         guard CGPreflightScreenCaptureAccess() else{showPermissionStatus();return}
-        startButton.title="开始录制"
+        startButton.title="开始录制";startButton.image=actionIcon("circle.fill")
         sourceGeneration += 1;let generation=sourceGeneration;clearRegion();status.stringValue="正在读取录制来源…"
         Task {do{let content=try await SCShareableContent.excludingDesktopWindows(true,onScreenWindowsOnly:true)
             await MainActor.run{guard generation == self.sourceGeneration else{return};self.displays=content.displays;self.available=content.windows.filter{$0.windowLayer == 0 && $0.owningApplication?.processID != ProcessInfo.processInfo.processIdentifier && $0.frame.width>180 && $0.frame.height>120 && !($0.title ?? "").isEmpty};self.region=nil;self.popup.removeAllItems();if self.mode.selectedSegment != 1 {self.popup.addItems(withTitles:self.displays.enumerated().map{"屏幕 \($0.offset+1) · \($0.element.width) × \($0.element.height)"})} else {self.popup.addItems(withTitles:self.available.map{"\($0.owningApplication?.applicationName ?? "App") — \($0.title ?? "窗口")"})};self.status.stringValue="选择录制来源，点击开始录制。"}
@@ -783,11 +798,11 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func resetButtons(){motionToggle.isEnabled=true;magnificationControl.isEnabled=true;bar.isHidden=true;microphoneToggle.isEnabled=true;audioToggle.isEnabled=true;dismissExitAlert();hideRegionIndicator();hideRecordingControls();revealMainWindow();regionButton.isEnabled=true;busy=false;mode.isEnabled=true;detail.stringValue="停止后自动生成运镜视频 · 原片和成片均保存在本机";startButton.isEnabled=true;refreshButton.isEnabled=true;popup.isEnabled=true;stopButton.isEnabled=false;capture=nil}
     func showPermissionStatus(){
         awaitingScreenPermission=true
-        startButton.title="授权录屏"
+        startButton.title="授权录屏";startButton.image=actionIcon("lock")
         status.stringValue="首次使用，请先允许熊猫录屏访问屏幕。"
     }
     func ensureScreenPermission()->Bool {
-        if CGPreflightScreenCaptureAccess(){startButton.title="开始录制";return true}
+        if CGPreflightScreenCaptureAccess(){startButton.title="开始录制";startButton.image=actionIcon("circle.fill");return true}
         showPermissionStatus()
         guard permissionAlert == nil,!requestingScreenPermission else{return false}
         let alert=NSAlert();permissionAlert=alert
@@ -835,7 +850,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationDidBecomeActive(_ notification:Notification){
         guard awaitingScreenPermission,window != nil,!busy,CGPreflightScreenCaptureAccess() else{return}
-        awaitingScreenPermission=false;startButton.title="开始录制";refresh()
+        awaitingScreenPermission=false;startButton.title="开始录制";startButton.image=actionIcon("circle.fill");refresh()
     }
     func show(_ error:Error){
         let nsError=error as NSError
