@@ -408,6 +408,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var selectionWindows=[RegionWindow]()
     var sourceGeneration=0
     var choosing=false
+    var screenPermissionRequested=false
+    var requestingScreenPermission=false
     var permissionAlert:NSAlert?
     var awaitingScreenPermission=false
     var screenObserver:NSObjectProtocol?
@@ -787,18 +789,49 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func ensureScreenPermission()->Bool {
         if CGPreflightScreenCaptureAccess(){startButton.title="开始录制";return true}
         showPermissionStatus()
-        guard permissionAlert == nil else{return false}
+        guard permissionAlert == nil,!requestingScreenPermission else{return false}
         let alert=NSAlert();permissionAlert=alert
         alert.messageText="允许录制屏幕"
-        alert.informativeText="在系统设置的「录屏与系统录音」中开启熊猫录屏。列表中没有时，点击「＋」添加「应用程序」里的熊猫录屏。授权后按系统提示退出并重新打开。"
-        alert.addButton(withTitle:"前往授权");alert.addButton(withTitle:"暂不")
+        alert.informativeText=screenPermissionRequested
+            ? "在系统设置的「录屏与系统录音」中开启熊猫录屏，再按系统提示重新打开应用。"
+            : "接下来会显示 macOS 的录屏授权提示。请通过系统提示打开设置，并开启熊猫录屏。"
+        alert.addButton(withTitle:screenPermissionRequested ? "打开系统设置" : "前往授权");alert.addButton(withTitle:"暂不")
         alert.beginSheetModal(for:window){[weak self] response in
-            self?.permissionAlert=nil
+            guard let self=self else{return};self.permissionAlert=nil
             guard response == .alertFirstButtonReturn else{return}
-            _ = CGRequestScreenCaptureAccess()
-            NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            if self.screenPermissionRequested {
+                NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            } else {
+                // Let our sheet close before macOS presents its own permission prompt.
+                DispatchQueue.main.async {self.requestScreenAuthorization()}
+            }
         }
         return false
+    }
+    func requestScreenAuthorization(){
+        guard !requestingScreenPermission else{return}
+        requestingScreenPermission=true;screenPermissionRequested=true
+        NSApp.activate(ignoringOtherApps:true)
+        status.stringValue="请在 macOS 授权提示中允许录屏。"
+        if CGRequestScreenCaptureAccess() {
+            requestingScreenPermission=false;awaitingScreenPermission=false;refresh();return
+        }
+        // Use the capture framework to register the actual application requesting access.
+        // Do not immediately activate Settings and cover the system permission prompt.
+        Task {
+            do {_ = try await SCShareableContent.excludingDesktopWindows(true,onScreenWindowsOnly:true)}
+            catch {
+                let e=error as NSError
+                if e.domain != SCStreamErrorDomain || e.code != -3801 {
+                    await MainActor.run{self.requestingScreenPermission=false;self.show(error)};return
+                }
+            }
+            await MainActor.run {
+                self.requestingScreenPermission=false
+                if CGPreflightScreenCaptureAccess(){self.awaitingScreenPermission=false;self.refresh()}
+                else {self.status.stringValue="在系统设置中开启熊猫录屏；如已开启，请按系统提示重新打开。"}
+            }
+        }
     }
     func applicationDidBecomeActive(_ notification:Notification){
         guard awaitingScreenPermission,window != nil,!busy,CGPreflightScreenCaptureAccess() else{return}
