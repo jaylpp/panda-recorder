@@ -408,6 +408,8 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var selectionWindows=[RegionWindow]()
     var sourceGeneration=0
     var choosing=false
+    var permissionAlert:NSAlert?
+    var awaitingScreenPermission=false
     var screenObserver:NSObjectProtocol?
     var region:CGRect?
     var regionWindow:RegionWindow?
@@ -666,6 +668,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func changeMode(){sourceGeneration += 1;closeSelection();selectedDisplayID=nil;sourceRow.isHidden=mode.selectedSegment != 1;screenHint.isHidden=mode.selectedSegment == 1;updateScreenHint();windowNote.isHidden=mode.selectedSegment != 1;clearRegion();regionButton.isHidden=mode.selectedSegment == 1;popup.removeAllItems();refresh()}
     @objc func selectRegion(){
         guard !busy,!choosing else{return}
+        guard ensureScreenPermission() else{return}
         choosing=true;sourceGeneration += 1;let generation=sourceGeneration
         hideRecordingControls();hideRegionIndicator()
         Task {do {
@@ -695,13 +698,17 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } catch {await MainActor.run{guard generation == self.sourceGeneration else{return};self.choosing=false;self.window.makeKeyAndOrderFront(nil);self.show(error)}}}
     }
     @objc func refresh(){
-        guard !busy,!choosing else{return};sourceGeneration += 1;let generation=sourceGeneration;clearRegion();status.stringValue="正在读取录制来源…"
+        guard !busy,!choosing else{return}
+        guard CGPreflightScreenCaptureAccess() else{showPermissionStatus();return}
+        startButton.title="开始录制"
+        sourceGeneration += 1;let generation=sourceGeneration;clearRegion();status.stringValue="正在读取录制来源…"
         Task {do{let content=try await SCShareableContent.excludingDesktopWindows(true,onScreenWindowsOnly:true)
             await MainActor.run{guard generation == self.sourceGeneration else{return};self.displays=content.displays;self.available=content.windows.filter{$0.windowLayer == 0 && $0.owningApplication?.processID != ProcessInfo.processInfo.processIdentifier && $0.frame.width>180 && $0.frame.height>120 && !($0.title ?? "").isEmpty};self.region=nil;self.popup.removeAllItems();if self.mode.selectedSegment != 1 {self.popup.addItems(withTitles:self.displays.enumerated().map{"屏幕 \($0.offset+1) · \($0.element.width) × \($0.element.height)"})} else {self.popup.addItems(withTitles:self.available.map{"\($0.owningApplication?.applicationName ?? "App") — \($0.title ?? "窗口")"})};self.status.stringValue="选择录制来源，点击开始录制。"}
-        }catch{await MainActor.run{self.show(error)}}}
+        }catch{await MainActor.run{guard generation == self.sourceGeneration else{return};self.show(error)}}}
     }
     @objc func start(){
         guard !busy else{return}
+        guard ensureScreenPermission() else{return}
         if microphoneToggle.state == .on {
             guard #available(macOS 15.0, *) else{show(Failure(message:"麦克风录制需要 macOS 15 或更新版本"));return}
             switch AVCaptureDevice.authorizationStatus(for:.audio) {
@@ -772,7 +779,40 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }catch{await MainActor.run{self.resetButtons();self.show(error)}}}
     }
     func resetButtons(){motionToggle.isEnabled=true;magnificationControl.isEnabled=true;bar.isHidden=true;microphoneToggle.isEnabled=true;audioToggle.isEnabled=true;dismissExitAlert();hideRegionIndicator();hideRecordingControls();revealMainWindow();regionButton.isEnabled=true;busy=false;mode.isEnabled=true;detail.stringValue="停止后自动生成运镜视频 · 原片和成片均保存在本机";startButton.isEnabled=true;refreshButton.isEnabled=true;popup.isEnabled=true;stopButton.isEnabled=false;capture=nil}
-    func show(_ error:Error){status.stringValue="失败：\(error.localizedDescription)";let alert=NSAlert();alert.messageText="操作未完成";alert.informativeText=error.localizedDescription+"\n若为权限问题，请在系统设置 → 隐私与安全性 → 屏幕与系统音频录制中允许本应用，再重启。";alert.addButton(withTitle:"知道了");alert.beginSheetModal(for:window)}
+    func showPermissionStatus(){
+        awaitingScreenPermission=true
+        startButton.title="授权录屏"
+        status.stringValue="首次使用，请先允许熊猫录屏访问屏幕。"
+    }
+    func ensureScreenPermission()->Bool {
+        if CGPreflightScreenCaptureAccess(){startButton.title="开始录制";return true}
+        showPermissionStatus()
+        guard permissionAlert == nil else{return false}
+        let alert=NSAlert();permissionAlert=alert
+        alert.messageText="允许录制屏幕"
+        alert.informativeText="在系统设置的「录屏与系统录音」中开启熊猫录屏。列表中没有时，点击「＋」添加「应用程序」里的熊猫录屏。授权后按系统提示退出并重新打开。"
+        alert.addButton(withTitle:"前往授权");alert.addButton(withTitle:"暂不")
+        alert.beginSheetModal(for:window){[weak self] response in
+            self?.permissionAlert=nil
+            guard response == .alertFirstButtonReturn else{return}
+            _ = CGRequestScreenCaptureAccess()
+            NSWorkspace.shared.open(URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        }
+        return false
+    }
+    func applicationDidBecomeActive(_ notification:Notification){
+        guard awaitingScreenPermission,window != nil,!busy,CGPreflightScreenCaptureAccess() else{return}
+        awaitingScreenPermission=false;startButton.title="开始录制";refresh()
+    }
+    func show(_ error:Error){
+        let nsError=error as NSError
+        if nsError.domain == SCStreamErrorDomain && nsError.code == -3801 {
+            showPermissionStatus();_ = ensureScreenPermission();return
+        }
+        status.stringValue="失败：\(error.localizedDescription)"
+        let alert=NSAlert();alert.messageText="操作未完成";alert.informativeText=error.localizedDescription
+        alert.addButton(withTitle:"知道了");alert.beginSheetModal(for:window)
+    }
     func play(_ url:URL){
         guard FileManager.default.fileExists(atPath:url.path) else{return}
         if previewURL == url,pendingPreview == nil{return}
