@@ -60,5 +60,3 @@
 ## 链接作者
 
 Made by **[🐼 熊猫 Jay](https://github.com/jaylpp)**。
-
-其他项目：[Pandajay Skills](https://github.com/jaylpp/pandajay-skills) · [汉语新解 Chinese Insight](https://github.com/jaylpp/chinese-insight)
