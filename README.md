@@ -61,8 +61,4 @@
 
 Made by **[🐼 熊猫 Jay](https://github.com/jaylpp)**。
 
-我会在公众号 **「熊猫 Jay 字节之旅」** 分享 AI 工具、开发实践和自己的探索，欢迎关注和交流。
-
-<p><img src="docs/wechat.png" width="420" alt="熊猫 Jay 字节之旅公众号二维码"></p>
-
 其他项目：[Pandajay Skills](https://github.com/jaylpp/pandajay-skills) · [汉语新解 Chinese Insight](https://github.com/jaylpp/chinese-insight)
